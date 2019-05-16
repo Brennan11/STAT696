@@ -1,0 +1,145 @@
+---
+title: "Breast Cancer"
+author: "B. Whillock"
+date: "May 16, 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r message=FALSE, warning=FALSE}
+library(tidyverse)
+library(rsample)
+library(ROCR)
+library(caret)
+library(bnlearn)
+```
+
+## Breast Cancer Data
+
+```{r message=FALSE, warning=FALSE}
+df <- read_csv("Z:/data/breast cancer/bc.csv")
+df <- df %>% mutate_all(as.factor)
+```
+
+
+```{r}
+summary(df)
+```
+
+```{r}
+# Merge factor groups that only have a single point
+df$age <- df$age %>% fct_collapse("20-39" = c("20-29", "30-39"))
+df$inv_nodes <- df$inv_nodes %>% fct_collapse("15-26" = c("15-17","24-26"))
+df$breast_quad <- df$breast_quad %>% fct_collapse("central" = c("central", "?"))
+```
+
+```{r}
+# Examine class distribution
+table(df$class) %>% prop.table()
+```
+
+## Training
+
+```{r}
+# 80/20 Train-Test split with near equal class distributions
+set.seed(1)
+split <- initial_split(df, prop=.8, strata="class")
+train <- training(split)
+test <- testing(split)
+```
+
+```{r}
+# set up 10-fold CV
+features <- setdiff(names(train), "class")
+x <- train[, features]
+y <- train$class
+train_control <- trainControl(
+  method = "cv",
+  number = 10
+)
+```
+
+### Logistic Regression
+
+```{r message=FALSE, warning=FALSE}
+# Logistic regression
+fit_lr <- train(
+  x = x,
+  y = y,
+  method = "glm",
+  family = "binomial",
+  trControl = train_control,
+  trace = FALSE
+)
+```
+
+```{r}
+summary(fit_lr)
+```
+
+
+```{r}
+pred_lr <- predict(fit_lr$finalModel, test, type="response")
+pred_lr <- factor(ifelse(pred_lr<0.5, "no-recurrence-events", "recurrence-events"))
+confusionMatrix(pred_lr, test$class)
+pred_lr <- predict(fit_lr$finalModel, test, type="response")
+pred_lr <- prediction(pred_lr, test$class)
+auc_lr <- performance(pred_lr,"auc"); auc_lr <- as.numeric(auc_lr@y.values); 
+paste("AUC: ", auc_lr)
+perf_lr <- performance(pred_lr, 'tpr', 'fpr'); plot(perf_lr)
+```
+
+### Naive Bayes
+
+```{r message=FALSE, warning=FALSE}
+# Naive Bayes
+fit_nb <- train(
+  x = x,
+  y = y,
+  method = "nb",
+  trControl = train_control,
+  trace = FALSE
+)
+```
+
+```{r}
+fit_nb
+```
+
+```{r}
+pred_nb <- predict(fit_nb$finalModel, test)
+confusionMatrix(pred_nb$class, test$class)
+pred_nb <- prediction(pred_nb$posterior[,2], test$class)
+auc_nb <- performance(pred_nb,"auc"); auc_nb <- as.numeric(auc_nb@y.values); 
+paste("AUC :", auc_nb)
+perf_nb <- performance(pred_nb, 'tpr', 'fpr'); plot(perf_nb)
+```
+
+## Bayesian Network
+
+```{r message=FALSE, warning=FALSE}
+# Bayesian Network
+fit_bn <- hc(as.data.frame(train))
+```
+
+```{r}
+plot(fit_bn)
+```
+
+```{r message=FALSE, warning=FALSE}
+fit_bn <- bn.fit(fit_bn, as.data.frame(train))
+```
+
+```{r}
+fit_bn
+```
+
+```{r}
+pred_bn <- predict(fit_bn, node="class", as.data.frame(test))
+bn_test_acc <- sum(pred_bn==test$class)/length(pred_bn)
+paste("Test Accuracy: ", bn_test_acc)
+```
+
