@@ -1,0 +1,110 @@
+---
+title: "Multinomial Regression"
+author: "B. Whillock"
+date: "May 16, 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r message=FALSE, warning=FALSE}
+library(tidyverse)
+# for data manipulation and presentation
+
+library(rsample)
+# for stratified sampling on classification problems
+
+library(nnet)
+# for multinomial regression
+
+library(caret)
+# for cross validation
+```
+
+## Iris Data
+
+```{r}
+# the dataset iris is native to base R
+# convert to tibble for convenience
+iris <- as_tibble(iris)
+iris
+summary(iris)
+dim(iris)
+```
+
+
+## Density plots of variables by their class:
+
+```{r, echo=FALSE}
+# density plots of variables by class
+p <- ggplot(data=iris)
+p + geom_density(aes(Sepal.Length, fill=Species), alpha=0.5)
+p + geom_density(aes(Sepal.Width, fill=Species), alpha=0.5)
+p + geom_density(aes(Petal.Length, fill=Species), alpha=0.5)
+p + geom_density(aes(Petal.Width, fill=Species), alpha=0.5)
+```
+
+## Training
+
+```{r}
+# 50/50 train-test split with near equal distribution of the dependent variable
+set.seed(123)
+split = initial_split(iris, prop=.5, strata="Species")
+train = training(split)
+test = testing(split)
+```
+
+```{r}
+# verify distribution of the dependent variable
+table(train$Species) %>% prop.table()
+table(test$Species) %>% prop.table()
+```
+
+```{r, message=FALSE, warning=FALSE}
+# fit the training data with multinomial regression 
+fit = multinom(Species ~ ., data=train, maxit=10000, trace = FALSE)
+```
+
+```{r}
+summary(fit)
+confusionMatrix(predict(fit, test), test$Species)
+```
+
+## Training with Cross Validation
+
+```{r}
+# Set up for 10 fold CV and hyperparameter tuning
+train_control <- trainControl(
+  method = "cv",
+  number = 10
+)
+tune_grid <- expand.grid(
+  decay = c(1,.5,.1, 0)
+)
+```
+
+```{r}
+# fit the training data with multinomial regression, 10-fold CV,
+# and hyperparameter tuning
+fit2 <- train(
+  data=train,
+  Species ~ .,
+  method = "multinom",
+  maxit = 10000,
+  trControl = train_control,
+  tuneGrid = tune_grid,
+  trace = FALSE
+)
+```
+
+```{r}
+fit2
+summary(fit2)
+confusionMatrix(fit2)
+confusionMatrix(predict(fit2, test), test$Species)
+```
+
+
